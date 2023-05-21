@@ -47,7 +47,7 @@ app.post('/new', upload.array('images', 5), async (req, res) => {
     res.send('Advert created successfully');
   } catch (error) {
     console.error('Error saving a new advert:', error);
-    res.status(500).send('An error occurred while saving a new advert');
+    res.status(500).send('An error occurred saving a new advert');
   }
 });
 
@@ -136,7 +136,7 @@ app.post('/reserve', async (req, res) => {
   }
 });
 
-app.delete('/del', async (req, res) => {
+app.post('/del', async (req, res) => {
   try {
     const { id, ownerId } = req.body;
 
