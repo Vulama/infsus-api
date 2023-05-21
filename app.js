@@ -29,10 +29,6 @@ const upload = multer({ storage });
 
 app.post('/new', upload.array('images', 5), async (req, res) => {
   try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).send('No files uploaded.');
-    }
-
     const { ownerId, title, description, address, city, price_per_night } = req.body;
     const pictures = req.files.map((file) => file.filename);
 
