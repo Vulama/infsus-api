@@ -52,9 +52,20 @@ app.post('/new', upload.array('images', 5), async (req, res) => {
 
 app.put('/edit', upload.array('images', 5), async (req, res) => {
   try {
-    const { id, title, description, address, city, price_per_night, deletedImages } = req.body;
+    const { id, ownerId, title, description, address, city, price_per_night, deletedImages } = req.body;
     const newPictures = req.files.map((file) => file.filename);
     const deletedPictures = JSON.parse(deletedImages);
+
+    const ownershipQuery = `
+    SELECT id
+    FROM advert
+    WHERE id = $1 AND ownerid = $2
+  `;
+  const ownershipResult = await pool.query(ownershipQuery, [id, ownerId]);
+
+  if (ownershipResult.rows.length === 0) {
+    return res.status(403).send('Unauthorized edition');
+  }
 
     const fetch = `
       SELECT pictures
@@ -110,7 +121,18 @@ app.post('/reserve', async (req, res) => {
 
 app.delete('/del', async (req, res) => {
   try {
-    const { id } = req.body;
+    const { id, ownerId } = req.body;
+
+    const ownershipQuery = `
+      SELECT id
+      FROM advert
+      WHERE id = $1 AND ownerid = $2
+    `;
+    const ownershipResult = await pool.query(ownershipQuery, [id, ownerId]);
+
+    if (ownershipResult.rows.length === 0) {
+      return res.status(403).send('Unauthorized deletion');
+    }
 
     const query = 'DELETE FROM advert WHERE id = $1';
     const values = [id];
@@ -125,12 +147,37 @@ app.delete('/del', async (req, res) => {
 
 app.get('/adverts', async (req, res) => {
   try {
-    const advertsQuery = `
+    const { city, maxPrice, minPrice } = req.query;
+
+    if (city && !/^[\w\s]+$/.test(city)) {
+      return res.status(400).send('Invalid city format');
+    }
+
+    let advertsQuery = `
       SELECT a.id, a.title, a.description, a.pictures, a.address, a.city, a.price_per_night,
-             u.id AS user_id, u.username, u.phone_number, u.email
+             u.username, u.phone_number, u.email
       FROM advert AS a
       JOIN "user" AS u ON a.ownerId = u.id
     `;
+
+    const conditions = [];
+
+    if (city) {
+      conditions.push(`a.city = '${city}'`);
+    }
+
+    if (maxPrice) {
+      conditions.push(`a.price_per_night <= ${maxPrice}`);
+    }
+
+    if (minPrice) {
+      conditions.push(`a.price_per_night >= ${minPrice}`);
+    }
+
+    if (conditions.length > 0) {
+      advertsQuery += ` WHERE ${conditions.join(' AND ')}`;
+    }
+
     const result = await pool.query(advertsQuery);
     const adverts = await Promise.all(result.rows.map(async (row) => {
       const query = `
@@ -156,9 +203,22 @@ app.post('/register', async (req, res) => {
   try {
     const { username, password, email, phone_number } = req.body;
 
-    // Perform any validation checks here
+    const usernameQuery = `
+      SELECT id
+      FROM "user"
+      WHERE username = $1
+    `;
+    const usernameResult = await pool.query(usernameQuery, [username]);
 
-    // Save the user to the database (example: using PostgreSQL query)
+    if (usernameResult.rows.length > 0) {
+      return res.status(409).send('Username already in use');
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).send('Invalid email format');
+    }
+
     const query = `
       INSERT INTO "user" (username, password, email, phone_number)
       VALUES ($1, $2, $3, $4)
@@ -168,14 +228,14 @@ app.post('/register', async (req, res) => {
     const result = await pool.query(query, values);
 
     const userId = result.rows[0].id;
-    res.json({ message: 'User registered successfully', userId });
+    res.json({ message: 'User registered successfully', userId: userId });
   } catch (error) {
     console.error('Error registering user:', error);
     res.status(500).send('An error occurred while registering user');
   }
 });
 
-app.get('/login', async (req, res) => {
+app.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -187,7 +247,7 @@ app.get('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    res.json({ message: 'Login successful' });
+    res.json({ message: 'Login successful', userId: user.id });
   } catch (error) {
     console.error('Error authenticating user:', error);
     res.status(500).send('An error occurred while authenticating user');
