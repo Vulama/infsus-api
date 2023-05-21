@@ -30,14 +30,19 @@ const upload = multer({ storage });
 app.post('/new', upload.array('images', 5), async (req, res) => {
   try {
     const { ownerId, title, description, address, city, price_per_night } = req.body;
-    const pictures = req.files.map((file) => file.filename);
+    let pictures = [];
+    if (req.files){
+      pictures = req.files.map((file) => file.filename);
+    }
+
+    console.log(req.body);
 
     const query = `
       INSERT INTO advert (ownerId, title, description, pictures, address, city, price_per_night)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
     `;
     const values = [ownerId, title, description, pictures, address, city, price_per_night];
-    await pool.query(query, values);
+    const result = await pool.query(query, values);
 
     res.send('Advert created successfully');
   } catch (error) {
