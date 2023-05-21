@@ -105,6 +105,22 @@ app.post('/reserve', async (req, res) => {
   try {
     const { userId, advertId, startDate, endDate } = req.body;
 
+    // Check for overlap with existing reservations
+    const overlapQuery = `
+      SELECT id
+      FROM reservation
+      WHERE advertId = $1
+        AND ((startDate >= $2 AND startDate <= $3)
+          OR (endDate >= $2 AND endDate <= $3)
+          OR (startDate <= $2 AND endDate >= $3))
+    `;
+    const overlapValues = [advertId, startDate, endDate];
+    const overlapResult = await pool.query(overlapQuery, overlapValues);
+
+    if (overlapResult.rows.length > 0) {
+      return res.status(409).send('Reservation overlap detected');
+    }
+
     const query = `
       INSERT INTO reservation (userId, advertId, startDate, endDate)
       VALUES ($1, $2, $3, $4)
